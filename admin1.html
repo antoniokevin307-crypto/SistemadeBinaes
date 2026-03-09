@@ -142,7 +142,7 @@
                 await window.db.from('bus_location').update({ lat: null, lng: null }).eq('id', BUS_ID);
             }
         }
-        setInterval(loadAdmin, 3000);
+        // Eliminado el intervalo redundante ya que Realtime se encarga de las actualizaciones
 
         async function registerStudent() {
             const name = document.getElementById('s-name').value;
