@@ -118,7 +118,7 @@
                 if(active && s.end_time) currentTimer = s.end_time;
                 currentIds.add(s.id);
                 
-                const iconColor = done ? '#4b5563' : '#8b5cf6';
+                const iconColor = done ? 'var(--text-dim)' : 'var(--accent)';
                 
                 // Persistencia de marcadores
                 if (stopMarkers.has(s.id)) {

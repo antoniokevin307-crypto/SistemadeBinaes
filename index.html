@@ -6,39 +6,45 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        .hero { text-align: center; padding: 60px 20px; }
-        .hero h1 { font-size: 3rem; margin-bottom: 10px; background: linear-gradient(to right, var(--primary), var(--secondary)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-        .search-section { max-width: 500px; margin: 0 auto 40px; }
-        .results-box { margin-top: 15px; padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.05); display: none; }
-        .bus-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 800px; margin: 0 auto; }
-        .bus-card { cursor: pointer; text-align: center; border: 2px solid transparent; transition: 0.3s; }
-        .bus-card:hover { border-color: var(--primary); transform: scale(1.05); }
-        .bus-card span { font-size: 3rem; display: block; margin-bottom: 10px; }
+        .hero { text-align: center; padding: 60px 20px; animation: fadeIn 1s ease-out; }
+        .hero h1 { font-size: 3.5rem; margin-bottom: 10px; background: linear-gradient(to right, var(--accent), var(--secondary)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 15px var(--accent-glow)); }
+        .search-section { max-width: 550px; margin: 0 auto 40px; }
+        .results-box { margin-top: 15px; padding: 5px; border-radius: 12px; background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); display: none; overflow: hidden; animation: cardEntry 0.3s ease-out; }
+        .result-item { padding: 15px; border-bottom: 1px solid var(--glass-border); transition: var(--transition); cursor: default; }
+        .result-item:last-child { border-bottom: none; }
+        .result-item:hover { background: var(--glass-hover); }
+        .bus-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 800px; margin: 0 auto; }
+        .bus-card { cursor: pointer; text-align: center; border: 1px solid var(--glass-border); transition: var(--transition); }
+        .bus-card:hover { border-color: var(--accent); transform: translateY(-8px) scale(1.02); box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+        .bus-card span { font-size: 3.5rem; display: block; margin-bottom: 15px; filter: drop-shadow(0 0 10px rgba(255,255,255,0.2)); }
+        
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container" style="padding-top: 40px;">
         <div class="hero">
             <h1>🚍 RutaBinaes</h1>
-            <p>Selecciona tu transporte o busca tu asignación</p>
+            <p style="color: var(--text-dim); font-size: 1.1rem;">Ecosistema de Transporte Inteligente BINAES</p>
         </div>
 
         <div class="card search-section">
-            <h3>🔍 Busca tu transporte</h3>
-            <input type="text" id="student-search" placeholder="Ingresa tu nombre completo..." oninput="searchStudent()">
+            <h3 style="margin-top:0">🔍 Busca tu transporte</h3>
+            <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 15px;">Busca por tu nombre o código de estudiante</p>
+            <input type="text" id="student-search" placeholder="Ej: Juan Perez o 2024001..." oninput="searchStudent()">
             <div id="search-results" class="results-box"></div>
         </div>
 
         <div class="bus-grid">
             <div class="card bus-card" onclick="location.href='transporte1.html'">
                 <span>🚌</span>
-                <h2>Transporte 1</h2>
-                <p>Ruta Principal</p>
+                <h2 style="margin: 10px 0; color: var(--accent);">Transporte 1</h2>
+                <p style="color: var(--text-dim);">Ruta Principal</p>
             </div>
             <div class="card bus-card" onclick="location.href='transporte2.html'">
                 <span>🚌</span>
-                <h2>Transporte 2</h2>
-                <p>Ruta Secundaria</p>
+                <h2 style="margin: 10px 0; color: var(--secondary);">Transporte 2</h2>
+                <p style="color: var(--text-dim);">Ruta Secundaria</p>
             </div>
         </div>
     </div>
@@ -46,26 +52,48 @@
     <script src="supabase-config.js"></script>
     <script>
         async function searchStudent() {
-            const query = document.getElementById('student-search').value;
+            const query = document.getElementById('student-search').value.trim();
             const results = document.getElementById('search-results');
-            if(query.length < 3) { results.style.display = 'none'; return; }
+            
+            if(query.length < 3) { 
+                results.style.display = 'none'; 
+                return; 
+            }
 
+            results.style.display = 'block';
+            results.innerHTML = `<div class="result-item" style="text-align:center; color: var(--text-dim);">🔍 Buscando...</div>`;
+
+            // Búsqueda avanzada usando el filtro .or() con ILIKE parcial
             const { data, error } = await window.db.from('students')
-                .select('*')
-                .ilike('name', `%${query}%`)
-                .limit(3);
+                .select('*, stops(name)')
+                .or(`name.ilike.%${query}%,code.ilike.%${query}%`)
+                .limit(5);
+
+            if(error) {
+                console.error("Search Error:", error);
+                results.innerHTML = `<div class="result-item" style="color: #f43f5e">Error al conectar con la base de datos</div>`;
+                return;
+            }
 
             if(data && data.length > 0) {
-                results.style.display = 'block';
                 results.innerHTML = data.map(s => `
-                    <div style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                        <strong>${s.name}</strong><br>
-                        <span style="color: var(--secondary)">VA EN: TRANSPORTE ${s.bus_id}</span>
+                    <div class="result-item" style="border-left: 3px solid ${s.bus_id === 1 ? 'var(--accent)' : 'var(--secondary)'}">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong style="color: #fff; font-size: 1.05rem;">${s.name}</strong><br>
+                                <small style="color: var(--text-dim)">COD: ${s.code || 'N/A'} • PARADA: ${s.stops?.name || 'No asignada'}</small>
+                            </div>
+                            <div style="text-align: right;">
+                                <span style="background: ${s.bus_id === 1 ? 'var(--accent)' : 'var(--secondary)'}; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700;">
+                                    BUS ${s.bus_id}
+                                </span><br>
+                                <button class="btn-small" style="margin-top: 8px; font-size: 0.65rem;" onclick="location.href='transporte${s.bus_id}.html'">🗺️ Ver Mapa</button>
+                            </div>
+                        </div>
                     </div>
                 `).join('');
             } else {
-                results.style.display = 'block';
-                results.innerHTML = "No se encontraron resultados";
+                results.innerHTML = `<div class="result-item" style="color: var(--text-dim); text-align: center;">No se hallaron coincidencias para "${query}"</div>`;
             }
         }
     </script>

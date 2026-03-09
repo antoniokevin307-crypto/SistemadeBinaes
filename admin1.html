@@ -24,6 +24,7 @@
             <div class="card">
                 <h3>👤 Registrar Estudiante (Bus 1)</h3>
                 <input type="text" id="s-name" placeholder="Nombre completo">
+                <input type="text" id="s-code" placeholder="Código de Estudiante">
                 <select id="s-stop-target"><option value="">Cargando paradas...</option></select>
                 <button onclick="registerStudent()">Vincular Alumno</button>
             </div>
@@ -91,14 +92,17 @@
             let selectHtml = '<option value="">Seleccione parada...</option>';
             
             stops?.forEach(s => {
+                const isDone = s.status === 'completed';
                 currentIds.add(s.id);
                 selectHtml += `<option value="${s.id}">${s.name}</option>`;
                 
                 if (markers.has(s.id)) {
                     const m = markers.get(s.id);
                     m.setLatLng([s.lat, s.lng]);
+                    m.setOpacity(isDone ? 0.6 : 1);
                 } else {
                     const m = L.marker([s.lat, s.lng]).addTo(map).bindPopup(s.name);
+                    m.setOpacity(isDone ? 0.6 : 1);
                     markers.set(s.id, m);
                 }
 
@@ -115,7 +119,6 @@
                     </div>`;
                 }).join('');
 
-                const isDone = s.status === 'completed';
                 const isActive = s.status === 'active' && s.end_time;
                 
                 stopsHtml += `
@@ -171,12 +174,17 @@
 
         async function registerStudent() {
             const name = document.getElementById('s-name').value;
+            const code = document.getElementById('s-code').value;
             const stopId = document.getElementById('s-stop-target').value;
-            if(!name || !stopId) return alert("Faltan datos");
+            if(!name || !stopId || !code) return alert("Faltan datos");
             const { error } = await window.db.from('students').insert([{ 
-                name, stop_id: stopId, bus_id: BUS_ID, attendance_status: 'pending', code: "N/A", major: "Estudiante", year: "1", is_adult: false
+                name, code, stop_id: stopId, bus_id: BUS_ID, attendance_status: 'pending', major: "Estudiante", year: "1", is_adult: false
             }]);
-            if(error) alert("Error: " + error.message); else { document.getElementById('s-name').value = ""; loadAdmin(); }
+            if(error) alert("Error: " + error.message); else { 
+                document.getElementById('s-name').value = ""; 
+                document.getElementById('s-code').value = ""; 
+                loadAdmin(); 
+            }
         }
         async function updStudent(id, status) { await window.db.from('students').update({ attendance_status: status }).eq('id', id); loadAdmin(); }
         async function addStop() {

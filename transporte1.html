@@ -121,7 +121,7 @@
                 
                 // Color morado (#8b5cf6) por defecto para rutas activas o pendientes. 
                 // Gris (#4b5563) si está completado.
-                const iconColor = done ? '#4b5563' : '#8b5cf6';
+                const iconColor = done ? 'var(--text-dim)' : 'var(--accent)';
                 
                 // Persistencia de marcadores: Actualizar si existe, crear si no
                 if (stopMarkers.has(s.id)) {
