@@ -38,29 +38,49 @@
             map = L.map('map').setView([13.4795, -88.1729], 15);
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
             
-            window.db.channel('bus-live-2').on('postgres_changes', {event:'UPDATE', table:'bus_location', filter: `id=eq.${BUS_ID}`}, p => {
-                const data = p.new;
-                const statusLabel = document.getElementById('bus-status');
-                const trackBtn = document.getElementById('re-track');
+            // Carga inicial de ubicación del bus
+            const { data: initialLoc } = await window.db.from('bus_location').select('*').eq('id', BUS_ID).single();
+            if(initialLoc) updateBusUI(initialLoc);
 
-                if(data.lat && data.lng) {
-                    busPos = [data.lat, data.lng];
-                    statusLabel.innerText = "● BUS EN RUTA"; statusLabel.style.color = "#22c55e";
-                    trackBtn.style.display = "block";
-                    if(!busMarker) busMarker = L.marker(busPos, {icon: busIcon}).addTo(map); else busMarker.setLatLng(busPos);
-                    if(!hasCentered) { map.flyTo(busPos, 17); hasCentered = true; }
-                } else {
-                    if(busMarker) map.removeLayer(busMarker);
-                    busMarker = null; busPos = null; hasCentered = false;
-                    statusLabel.innerText = "Bus: Desconectado"; statusLabel.style.color = "#9ca3af";
-                    trackBtn.style.display = "none";
-                }
+            window.db.channel('bus-live-2').on('postgres_changes', {event:'UPDATE', table:'bus_location', filter: `id=eq.${BUS_ID}`}, p => {
+                updateBusUI(p.new);
+            }).subscribe();
+
+            // Realtime para paradas y timer
+            window.db.channel('stops-live-2')
+              .on('postgres_changes', {event:'*', table:'stops', filter: `bus_id=eq.${BUS_ID}`}, p => {
+                console.log("Stops Update:", p.eventType);
+                loadData();
+            }).subscribe();
+
+            // Realtime para estudiantes (para quitar alertas de inmediato)
+            window.db.channel('students-live-2')
+              .on('postgres_changes', {event:'*', table:'students', filter: `bus_id=eq.${BUS_ID}`}, p => {
+                console.log("Students Update:", p.eventType);
+                loadData();
             }).subscribe();
 
             loadData();
-            setInterval(loadData, 3000);
             setInterval(runClock, 1000);
         };
+
+        function updateBusUI(data) {
+            const statusLabel = document.getElementById('bus-status');
+            const trackBtn = document.getElementById('re-track');
+
+            if(data.lat && data.lng) {
+                busPos = [data.lat, data.lng];
+                if(statusLabel) { statusLabel.innerText = "● BUS EN RUTA"; statusLabel.style.color = "#22c55e"; }
+                if(trackBtn) trackBtn.style.display = "block";
+                if(!busMarker) busMarker = L.marker(busPos, {icon: busIcon}).addTo(map); else busMarker.setLatLng(busPos);
+                if(!hasCentered) { map.flyTo(busPos, 17); hasCentered = true; }
+            } else {
+                if(busMarker) map.removeLayer(busMarker);
+                busMarker = null; busPos = null; hasCentered = false;
+                if(statusLabel) { statusLabel.innerText = "Bus: Desconectado"; statusLabel.style.color = "#9ca3af"; }
+                if(trackBtn) trackBtn.style.display = "none";
+            }
+        }
 
         async function loadData() {
             const { data: stops } = await window.db.from('stops').select('*, students(*)').eq('bus_id', BUS_ID).order('id');
@@ -76,8 +96,12 @@
                 const done = s.status === 'completed';
                 if(active && s.end_time) currentTimer = s.end_time;
                 
+                // Color morado (#8b5cf6) por defecto para rutas activas o pendientes. 
+                // Gris (#4b5563) si está completado.
+                const iconColor = done ? '#4b5563' : '#8b5cf6';
+                
                 stopMarkers.push(L.circleMarker([s.lat, s.lng], {
-                    color: active ? '#ef4444' : (done ? '#4b5563' : '#f59e0b'),
+                    color: iconColor,
                     radius: 10, fillOpacity: 0.8
                 }).addTo(map).bindPopup(s.name));
 
@@ -89,7 +113,8 @@
                         <span class="status-${status}">${statusLabels[status]}</span>
                     </div>`;
                 }).join('');
-                content += `<div class="card" style="border-left:8px solid ${active?'#ef4444':(done?'#4b5563':'#f59e0b')}; opacity:${done?0.6:1}">
+                
+                content += `<div class="card" style="border-left:8px solid ${iconColor}; opacity:${done?0.6:1}">
                     <h3>📍 RUTA ${idx+1}: ${s.name} ${done?'✅':''}</h3>${studs || '<small>Sin alumnos</small>'}</div>`;
                 
                 if(done) {
@@ -99,18 +124,25 @@
             });
             window.endTime = currentTimer; // Actualizar timer global
             root.innerHTML = content;
-            alertRoot.innerHTML = anyMissing ? `<div class="alert-box">¡Atención! Hay estudiantes que no abordaron en paradas completadas</div>` : "";
+            if(alertRoot) alertRoot.innerHTML = anyMissing ? `<div class="alert-box">¡Atención! Hay estudiantes que no abordaron en paradas completadas</div>` : "";
         }
 
         function runClock() {
-            if(!window.endTime) return;
-            const diff = Math.floor((new Date(window.endTime).getTime() - Date.now()) / 1000);
             const box = document.getElementById('timer-box');
+            if(!window.endTime) {
+                if(box) box.style.display = 'none';
+                return;
+            }
+            const diff = Math.floor((new Date(window.endTime).getTime() - Date.now()) / 1000);
             if(diff > 0) {
-                box.style.display = 'block';
+                if(box) box.style.display = 'block';
                 const m = Math.floor(diff/60), s = diff%60;
-                document.getElementById('count-ui').innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
-            } else { box.style.display = 'none'; window.endTime = null; }
+                const ui = document.getElementById('count-ui');
+                if(ui) ui.innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
+            } else { 
+                if(box) box.style.display = 'none'; 
+                window.endTime = null; 
+            }
         }
         function centerBus() { if(busPos) map.flyTo(busPos, 17); }
     </script>

@@ -45,7 +45,22 @@
                 tempMarker = L.circleMarker(e.latlng, {color:'#f59e0b', radius:12, fillOpacity:0.8}).addTo(map);
             });
             loadAdmin();
+            setInterval(updateCountdowns, 1000);
         };
+
+        function updateCountdowns() {
+            document.querySelectorAll('.timer-display').forEach(el => {
+                const end = el.getAttribute('data-end');
+                if(!end) return;
+                const diff = Math.floor((new Date(end).getTime() - Date.now()) / 1000);
+                if(diff > 0) {
+                    const m = Math.floor(diff/60), s = diff%60;
+                    el.innerText = `⏱️ ${m}:${s < 10 ? '0' : ''}${s}`;
+                } else {
+                    el.innerText = "";
+                }
+            });
+        }
 
         async function loadAdmin() {
             const { data: stops } = await window.db.from('stops').select('*, students(*)').eq('bus_id', BUS_ID).order('id');
@@ -71,12 +86,15 @@
                 }).join('');
 
                 const isDone = s.status === 'completed';
+                const isActive = s.status === 'active' && s.end_time;
+                
                 container.innerHTML += `
                     <div class="stop-card" style="opacity:${isDone?0.7:1}">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <strong>${s.name} <small>(${s.status || 'pendiente'})</small></strong>
-                            <div>
-                                ${!isDone ? `<button class="btn-small" style="background:#22c55e" onclick="setTimer(${s.id})">Timer</button>
+                            <div style="display:flex; align-items:center; gap:5px;">
+                                <span class="timer-display" data-end="${isActive ? s.end_time : ''}" style="color:#ec4899; font-weight:bold; font-size:0.9rem;"></span>
+                                ${!isDone ? `<button class="btn-small" style="background:#22c55e" onclick="setTimer(${s.id})">${isActive?'Reiniciar':'Timer'}</button>
                                 <button class="btn-small" style="background:#6366f1" onclick="updateStatus(${s.id},'completed')">Fin</button>` : 
                                 `<button class="btn-small" style="background:#f59e0b" onclick="updateStatus(${s.id},'active')">♻ Reiniciar</button>`}
                                 <button class="btn-small" style="background:#b91c1c" onclick="deleteStop(${s.id})">Del</button>
@@ -85,6 +103,7 @@
                         <div style="margin-top:10px;">${studentsHtml || '<small>Sin alumnos</small>'}</div>
                     </div>`;
             });
+            updateCountdowns();
         }
 
         async function toggleGPS() {
