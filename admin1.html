@@ -35,7 +35,12 @@
     <script>
         const BUS_ID = 1;
         let map, tempMarker, isGps = false, watchId = null, markers = [], busMarkerAdmin;
-        const busIcon = L.divIcon({ html: `<div style="font-size:25px; filter: drop-shadow(0 0 5px #fff);">🚍</div>`, className: 'bus-admin' });
+        const busIcon = L.divIcon({ 
+            html: `<div style="font-size:22px;">🚍</div>`, 
+            className: 'bus-admin',
+            iconSize: [25, 25],
+            iconAnchor: [12, 12]
+        });
 
         window.onload = () => {
             map = L.map('map').setView([13.4795, -88.1729], 14);
@@ -46,6 +51,15 @@
             });
             loadAdmin();
             setInterval(updateCountdowns, 1000);
+
+            // Suscripción Realtime para Admin 1
+            window.db.channel('admin-stops-1')
+                .on('postgres_changes', {event:'*', table:'stops', filter: `bus_id=eq.${BUS_ID}`}, () => loadAdmin())
+                .subscribe();
+            
+            window.db.channel('admin-studs-1')
+                .on('postgres_changes', {event:'*', table:'students', filter: `bus_id=eq.${BUS_ID}`}, () => loadAdmin())
+                .subscribe();
         };
 
         function updateCountdowns() {
@@ -56,6 +70,11 @@
                 if(diff > 0) {
                     const m = Math.floor(diff/60), s = diff%60;
                     el.innerText = `⏱️ ${m}:${s < 10 ? '0' : ''}${s}`;
+                } else if (diff <= 0 && diff > -5) {
+                    // Auto-finalizar si el tiempo se acaba (con un margen de 5 seg)
+                    const stopId = el.closest('.stop-card').querySelector('button[onclick^="updateStatus"]').getAttribute('onclick').match(/\d+/)[0];
+                    if(stopId) updateStatus(stopId, 'completed');
+                    el.innerText = "";
                 } else {
                     el.innerText = "";
                 }
@@ -174,7 +193,13 @@
             await window.db.from('stops').update({ status, end_time: null }).eq('id', id);
             loadAdmin();
         }
-        async function deleteStop(id) { if(confirm("¿Borrar?")) { await window.db.from('stops').delete().eq('id', id); loadAdmin(); } }
+        async function deleteStop(id) { 
+            if(confirm("¿Borrar parada y sus alumnos?")) { 
+                await window.db.from('students').delete().eq('stop_id', id);
+                await window.db.from('stops').delete().eq('id', id); 
+                loadAdmin(); 
+            } 
+        }
         async function delStudent(id) { await window.db.from('students').delete().eq('id', id); loadAdmin(); }
     </script>
 </body>

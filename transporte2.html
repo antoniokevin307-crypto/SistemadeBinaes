@@ -30,9 +30,16 @@
         const BUS_ID = 2;
         let map, busMarker, stopMarkers = [], busPos = null, hasCentered = false;
         const busIcon = L.divIcon({
-            html: `<div style="font-size:35px; background:white; border-radius:50%; padding:5px; border:4px solid #f59e0b; box-shadow:0 0 15px rgba(245, 158, 11, 0.5);">🚍</div>`,
-            className: 'custom-bus'
+            html: `<div style="font-size:28px;">🚍</div>`,
+            className: 'custom-bus',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16]
         });
+        
+        // Estilo CSS extra para evitar que el divIcon cree bordes o fondos
+        const style = document.createElement('style');
+        style.innerHTML = '.custom-bus { background: none !important; border: none !important; }';
+        document.head.appendChild(style);
 
         window.onload = async function() {
             map = L.map('map').setView([13.4795, -88.1729], 15);
@@ -50,6 +57,7 @@
             window.db.channel('stops-live-2')
               .on('postgres_changes', {event:'*', table:'stops', filter: `bus_id=eq.${BUS_ID}`}, p => {
                 console.log("Stops Update:", p.eventType);
+                if(p.new && p.new.status !== 'active') { window.endTime = null; runClock(); }
                 loadData();
             }).subscribe();
 

@@ -20,6 +20,35 @@ button:hover { transform: translateY(-2px); filter: brightness(1.1); }
 .status-not-attending { color: #facc15 !important; font-weight: bold; font-size: 0.75rem; }
 .name-pending { opacity: 0.5; color: #9ca3af; }
 
-/* Alertas */
-@keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
-.alert-box { background: #ef4444; color: white; padding: 15px; border-radius: 12px; margin: 10px 0 20px 0; animation: shake 0.5s infinite; border: 2px solid white; text-align: center; font-weight: bold; z-index: 1000; position: relative; }
+/* Alertas Premium */
+@keyframes alertSlideIn {
+    from { opacity: 0; transform: translateY(-20px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.alert-box {
+    background: rgba(239, 68, 68, 0.2);
+    backdrop-filter: blur(12px);
+    border: 1px solid #ef4444;
+    color: #fca5a5;
+    padding: 18px;
+    border-radius: 15px;
+    margin: 15px 0;
+    text-align: center;
+    font-weight: 700;
+    box-shadow: 0 8px 32px rgba(239, 68, 68, 0.2);
+    animation: alertSlideIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+}
+
+/* Glassmorphism for cards */
+.card, .stop-card {
+    background: rgba(255, 255, 255, 0.05) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.card:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.4); }
