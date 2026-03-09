@@ -46,18 +46,23 @@
             map = L.map('map').setView([13.4795, -88.1729], 15);
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
             
-            // Carga inicial independiente
-            const { data: initialLoc } = await window.db.from('bus_location').select('*').eq('id', BUS_ID).single();
-            if(initialLoc) updateBusUI(initialLoc);
+            // Carga inicial e independiente del bus al abrir
+            const { data: initLoc } = await window.db.from('bus_location').select('*').eq('id', BUS_ID).single();
+            if(initLoc) updateBusUI(initLoc);
 
-            // Suscripción GPS estricta para Bus 1
+            // Suscripción GPS Robusta (sin filtros para mejorar confiabilidad)
             window.db.channel('bus-live').on('postgres_changes', {
                 event: 'UPDATE', 
-                table: 'bus_location', 
-                filter: `id=eq.${BUS_ID}` 
+                table: 'bus_location'
             }, p => {
-                updateBusUI(p.new);
+                if(p.new && p.new.id == BUS_ID) updateBusUI(p.new);
             }).subscribe();
+
+            // Refresco periódico de ubicación como respaldo cada 10s
+            setInterval(async () => {
+                const { data } = await window.db.from('bus_location').select('*').eq('id', BUS_ID).single();
+                if(data) updateBusUI(data);
+            }, 10000);
 
             // Sincronización Realtime para Paradas (Stops)
             window.db.channel('stops-live').on('postgres_changes', {event:'*', table:'stops'}, p => {
