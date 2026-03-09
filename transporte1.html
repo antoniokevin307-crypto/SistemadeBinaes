@@ -28,7 +28,7 @@
     <script src="supabase-config.js"></script>
     <script>
         const BUS_ID = 1;
-        let map, busMarker, stopMarkers = [], busPos = null, hasCentered = false;
+        let map, busMarker, stopMarkers = new Map(), busPos = null, hasCentered = false;
 
         // Icono estilo Waze: Pequeño, formal, sin brillo, tamaño fijo
         const busIcon = L.divIcon({
@@ -107,24 +107,34 @@
             const { data: stops } = await window.db.from('stops').select('*, students(*)').eq('bus_id', BUS_ID).order('id');
             const root = document.getElementById('itinerary');
             const alertRoot = document.getElementById('alert-container');
-            stopMarkers.forEach(m => map.removeLayer(m)); stopMarkers = [];
+            
             let content = "";
             let anyMissing = false;
             let currentTimer = null;
+            const currentIds = new Set();
 
             stops?.forEach((s, idx) => {
                 const active = s.status === 'active';
                 const done = s.status === 'completed';
                 if(active && s.end_time) currentTimer = s.end_time;
+                currentIds.add(s.id);
                 
                 // Color morado (#8b5cf6) por defecto para rutas activas o pendientes. 
                 // Gris (#4b5563) si está completado.
                 const iconColor = done ? '#4b5563' : '#8b5cf6';
                 
-                stopMarkers.push(L.circleMarker([s.lat, s.lng], {
-                    color: iconColor,
-                    radius: 10, fillOpacity: 0.8
-                }).addTo(map).bindPopup(s.name));
+                // Persistencia de marcadores: Actualizar si existe, crear si no
+                if (stopMarkers.has(s.id)) {
+                    const marker = stopMarkers.get(s.id);
+                    marker.setLatLng([s.lat, s.lng]);
+                    marker.setStyle({ color: iconColor });
+                } else {
+                    const marker = L.circleMarker([s.lat, s.lng], {
+                        color: iconColor,
+                        radius: 10, fillOpacity: 0.8
+                    }).addTo(map).bindPopup(s.name);
+                    stopMarkers.set(s.id, marker);
+                }
 
                 const studs = s.students.map(st => {
                     const status = st.attendance_status || 'pending';
@@ -143,8 +153,20 @@
                     if(missing.length > 0) anyMissing = true;
                 }
             });
-            window.endTime = currentTimer; // Actualizar timer global
-            root.innerHTML = content;
+
+            // Limpiar marcadores de paradas eliminadas
+            for (const [id, marker] of stopMarkers) {
+                if (!currentIds.has(id)) {
+                    map.removeLayer(marker);
+                    stopMarkers.delete(id);
+                }
+            }
+
+            window.endTime = currentTimer;
+            // Solo actualizar el DOM si el contenido ha cambiado (para evitar parpadeos innecesarios)
+            if (root.innerHTML !== content) {
+                root.innerHTML = content;
+            }
             if(alertRoot) alertRoot.innerHTML = anyMissing ? `<div class="alert-box">¡Atención! Hay estudiantes que no abordaron en paradas completadas</div>` : "";
         }
 

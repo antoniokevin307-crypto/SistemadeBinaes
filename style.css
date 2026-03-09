@@ -55,12 +55,15 @@ button:hover { transform: translateY(-2px); filter: brightness(1.1); }
     border: 1px solid rgba(255, 255, 255, 0.1);
     transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
     animation: cardFadeIn 0.3s ease-out forwards;
+    will-change: transform, opacity;
 }
 
 .card:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.4); }
 
-#itinerary {
+#itinerary, #stops-container {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
+    min-height: 50px; /* Prevent collapse */
+    transition: all 0.3s ease;
 }

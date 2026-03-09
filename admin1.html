@@ -34,7 +34,8 @@
     <script src="supabase-config.js"></script>
     <script>
         const BUS_ID = 1;
-        let map, tempMarker, isGps = false, watchId = null, markers = [], busMarkerAdmin;
+        let map, tempMarker, isGps = false, watchId = null, markers = new Map(), busMarkerAdmin;
+        
         const busIcon = L.divIcon({ 
             html: `<div style="font-size:22px;">🚍</div>`, 
             className: 'bus-admin',
@@ -71,7 +72,6 @@
                     const m = Math.floor(diff/60), s = diff%60;
                     el.innerText = `⏱️ ${m}:${s < 10 ? '0' : ''}${s}`;
                 } else if (diff <= 0 && diff > -5) {
-                    // Auto-finalizar si el tiempo se acaba (con un margen de 5 seg)
                     const stopId = el.closest('.stop-card').querySelector('button[onclick^="updateStatus"]').getAttribute('onclick').match(/\d+/)[0];
                     if(stopId) updateStatus(stopId, 'completed');
                     el.innerText = "";
@@ -85,12 +85,23 @@
             const { data: stops } = await window.db.from('stops').select('*, students(*)').eq('bus_id', BUS_ID).order('id');
             const container = document.getElementById('stops-container');
             const select = document.getElementById('s-stop-target');
-            markers.forEach(m => map.removeLayer(m)); markers = [];
-            container.innerHTML = ""; select.innerHTML = '<option value="">Seleccione parada...</option>';
+            
+            const currentIds = new Set();
+            let stopsHtml = "";
+            let selectHtml = '<option value="">Seleccione parada...</option>';
             
             stops?.forEach(s => {
-                select.innerHTML += `<option value="${s.id}">${s.name}</option>`;
-                markers.push(L.marker([s.lat, s.lng]).addTo(map).bindPopup(s.name));
+                currentIds.add(s.id);
+                selectHtml += `<option value="${s.id}">${s.name}</option>`;
+                
+                if (markers.has(s.id)) {
+                    const m = markers.get(s.id);
+                    m.setLatLng([s.lat, s.lng]);
+                } else {
+                    const m = L.marker([s.lat, s.lng]).addTo(map).bindPopup(s.name);
+                    markers.set(s.id, m);
+                }
+
                 const studentsHtml = s.students.map(st => {
                     const status = st.attendance_status || 'pending';
                     const labels = {'pending':'⏳','boarded':'✅','not_attending':'❌'};
@@ -107,7 +118,7 @@
                 const isDone = s.status === 'completed';
                 const isActive = s.status === 'active' && s.end_time;
                 
-                container.innerHTML += `
+                stopsHtml += `
                     <div class="stop-card" style="opacity:${isDone?0.7:1}">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <strong>${s.name} <small>(${s.status || 'pendiente'})</small></strong>
@@ -122,6 +133,21 @@
                         <div style="margin-top:10px;">${studentsHtml || '<small>Sin alumnos</small>'}</div>
                     </div>`;
             });
+
+            for (const [id, m] of markers) {
+                if (!currentIds.has(id)) {
+                    map.removeLayer(m);
+                    markers.delete(id);
+                }
+            }
+
+            if (container.innerHTML !== stopsHtml) container.innerHTML = stopsHtml;
+            
+            if (select.options.length !== (stops?.length || 0) + 1) {
+                const currentVal = select.value;
+                select.innerHTML = selectHtml;
+                select.value = currentVal;
+            }
             updateCountdowns();
         }
 
@@ -142,32 +168,15 @@
                 await window.db.from('bus_location').update({ lat: null, lng: null }).eq('id', BUS_ID);
             }
         }
-        // Eliminado el intervalo redundante ya que Realtime se encarga de las actualizaciones
 
         async function registerStudent() {
             const name = document.getElementById('s-name').value;
             const stopId = document.getElementById('s-stop-target').value;
             if(!name || !stopId) return alert("Faltan datos");
-            
-            // Enviamos TODOS los campos que pueden ser NOT NULL en la DB
             const { error } = await window.db.from('students').insert([{ 
-                name, 
-                stop_id: stopId, 
-                bus_id: BUS_ID, 
-                attendance_status: 'pending',
-                code: "N/A",
-                major: "Estudiante",
-                year: "1",
-                is_adult: false
+                name, stop_id: stopId, bus_id: BUS_ID, attendance_status: 'pending', code: "N/A", major: "Estudiante", year: "1", is_adult: false
             }]);
-            
-            if(error) {
-                console.error("Error al insertar:", error);
-                alert("Error al guardar: " + error.message);
-            } else {
-                document.getElementById('s-name').value = ""; 
-                loadAdmin();
-            }
+            if(error) alert("Error: " + error.message); else { document.getElementById('s-name').value = ""; loadAdmin(); }
         }
         async function updStudent(id, status) { await window.db.from('students').update({ attendance_status: status }).eq('id', id); loadAdmin(); }
         async function addStop() {
@@ -185,16 +194,13 @@
             if(status === 'completed') {
                 const { data: stopData } = await window.db.from('stops').select('name, students(*)').eq('id', id).single();
                 const missing = stopData.students.filter(st => (st.attendance_status || 'pending') === 'pending');
-                if(missing.length > 0) {
-                    document.getElementById('alert-container').innerHTML = `<div class="alert-box">¡Atención! Alumnos no abordaron en ${stopData.name}</div>`;
-                    alert("Alumnos pendientes en esta parada");
-                }
+                if(missing.length > 0) alert("Alumnos pendientes en: " + stopData.name);
             }
             await window.db.from('stops').update({ status, end_time: null }).eq('id', id);
             loadAdmin();
         }
         async function deleteStop(id) { 
-            if(confirm("¿Borrar parada y sus alumnos?")) { 
+            if(confirm("¿Borrar parada?")) { 
                 await window.db.from('students').delete().eq('stop_id', id);
                 await window.db.from('stops').delete().eq('id', id); 
                 loadAdmin(); 
