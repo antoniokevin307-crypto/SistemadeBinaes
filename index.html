@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RutaBinaes - Inicio</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        .hero { text-align: center; padding: 60px 20px; }
+        .hero h1 { font-size: 3rem; margin-bottom: 10px; background: linear-gradient(to right, var(--primary), var(--secondary)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+        .search-section { max-width: 500px; margin: 0 auto 40px; }
+        .results-box { margin-top: 15px; padding: 15px; border-radius: 12px; background: rgba(255,255,255,0.05); display: none; }
+        .bus-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 800px; margin: 0 auto; }
+        .bus-card { cursor: pointer; text-align: center; border: 2px solid transparent; transition: 0.3s; }
+        .bus-card:hover { border-color: var(--primary); transform: scale(1.05); }
+        .bus-card span { font-size: 3rem; display: block; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hero">
+            <h1>🚍 RutaBinaes</h1>
+            <p>Selecciona tu transporte o busca tu asignación</p>
+        </div>
+
+        <div class="card search-section">
+            <h3>🔍 Busca tu transporte</h3>
+            <input type="text" id="student-search" placeholder="Ingresa tu nombre completo..." oninput="searchStudent()">
+            <div id="search-results" class="results-box"></div>
+        </div>
+
+        <div class="bus-grid">
+            <div class="card bus-card" onclick="location.href='transporte1.html'">
+                <span>🚌</span>
+                <h2>Transporte 1</h2>
+                <p>Ruta Principal</p>
+            </div>
+            <div class="card bus-card" onclick="location.href='transporte2.html'">
+                <span>🚌</span>
+                <h2>Transporte 2</h2>
+                <p>Ruta Secundaria</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="supabase-config.js"></script>
+    <script>
+        async function searchStudent() {
+            const query = document.getElementById('student-search').value;
+            const results = document.getElementById('search-results');
+            if(query.length < 3) { results.style.display = 'none'; return; }
+
+            const { data, error } = await window.db.from('students')
+                .select('*')
+                .ilike('name', `%${query}%`)
+                .limit(3);
+
+            if(data && data.length > 0) {
+                results.style.display = 'block';
+                results.innerHTML = data.map(s => `
+                    <div style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <strong>${s.name}</strong><br>
+                        <span style="color: var(--secondary)">VA EN: TRANSPORTE ${s.bus_id}</span>
+                    </div>
+                `).join('');
+            } else {
+                results.style.display = 'block';
+                results.innerHTML = "No se encontraron resultados";
+            }
+        }
+    </script>
+</body>
+</html>
