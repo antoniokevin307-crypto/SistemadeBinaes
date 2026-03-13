@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADMIN Asientos Bus 2 - RutaBinaes</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        .bus-frame {
+            background: rgba(255, 255, 255, 0.03);
+            border: 3px solid var(--glass-border);
+            border-radius: 40px 120px 60px 40px;
+            padding: 40px 60px 40px 40px;
+            position: relative;
+            overflow-x: auto;
+            margin-bottom: 30px;
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.5);
+        }
+        .bus-frame::after {
+            content: "🎮";
+            position: absolute;
+            right: 40px; top: 50%; transform: translateY(-50%);
+            font-size: 2rem; filter: grayscale(1) opacity(0.5);
+        }
+        .bus-grid-horizontal {
+            display: grid;
+            grid-template-rows: repeat(2, 40px) 30px repeat(2, 40px);
+            grid-auto-flow: column; gap: 8px; width: max-content;
+        }
+        .seat {
+            width: 40px; height: 40px;
+            background: var(--glass); border: 1px solid var(--glass-border);
+            border-radius: 8px; display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; cursor: pointer; transition: var(--transition);
+            color: var(--text-dim); font-weight: 600;
+        }
+        .seat:hover { background: var(--glass-hover); transform: scale(1.1); z-index: 10; }
+        .seat.occupied-student { background: #3b82f6 !important; color: white; }
+        .seat.occupied-leader { background: var(--secondary) !important; color: white; }
+        .seat.occupied-teacher { background: #f59e0b !important; color: white; }
+        .seat.selected { border: 2px solid white; box-shadow: 0 0 15px white; transform: scale(1.1); }
+        .aisle-h { grid-row: 3; height: 30px; }
+        .bathroom-h {
+            grid-row: 4 / 6; grid-column: 1;
+            background: rgba(244, 63, 94, 0.1); border: 2px dashed #f43f5e;
+            border-radius: 12px; display: flex; align-items: center; justify-content: center;
+            font-size: 0.8rem; font-weight: bold; color: #fda4af; margin-right: 10px;
+        }
+        .role-selector {
+            display: flex; gap: 10px; margin-top: 15px; justify-content: center;
+        }
+        .role-btn {
+            padding: 8px 15px; border-radius: 20px; border: 1px solid var(--glass-border);
+            background: var(--glass); color: white; cursor: pointer; font-size: 0.8rem;
+            transition: var(--transition);
+        }
+        .role-btn.active { border-color: white; transform: scale(1.05); }
+        .role-btn[data-role="student"].active { background: #3b82f6 !important; }
+        .role-btn[data-role="leader"].active { background: var(--secondary) !important; }
+        .role-btn[data-role="teacher"].active { background: #f59e0b !important; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <button onclick="location.href='admin2.html'" style="width: auto; padding: 8px 15px; background: #4b5563;">⬅ Volver Admin</button>
+            <h2 style="margin: 0;">🔧 GESTIÓN ASIENTOS - BUS 2</h2>
+        </header>
+
+        <div class="card" style="padding: 10px; overflow: hidden;">
+            <div class="bus-frame">
+                <div id="bus-layout" class="bus-grid-horizontal"></div>
+            </div>
+        </div>
+
+        <div id="assignment-ui" class="card" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 id="selected-seat-title" style="margin:0;">Asiento #</h3>
+                <button onclick="document.getElementById('assignment-ui').style.display='none'" style="width:auto; padding:5px 10px; background:transparent;">✕</button>
+            </div>
+            
+            <div id="search-section">
+                <input type="text" id="person-search" placeholder="Buscar persona..." oninput="searchPeople()">
+                <div id="results" style="margin-top:10px; max-height: 150px; overflow-y: auto;"></div>
+            </div>
+
+            <div id="selected-person-info" style="margin-top: 15px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 15px; display: none; text-align: center;">
+                <p><strong id="person-name-display" style="font-size: 1.2rem;"></strong></p>
+                
+                <p><small style="color:var(--text-dim)">ASIGNAR COMO:</small></p>
+                <div class="role-selector">
+                    <button class="role-btn active" data-role="student" onclick="setRole('student')">Estudiante</button>
+                    <button class="role-btn" data-role="leader" onclick="setRole('leader')">Líder</button>
+                    <button class="role-btn" data-role="teacher" onclick="setRole('teacher')">Maestro</button>
+                </div>
+
+                <button onclick="saveAssignment()" style="margin-top: 20px; background: linear-gradient(135deg, #10b981, #059669);">Confirmar Asignación</button>
+            </div>
+
+            <button onclick="clearSeat()" id="btn-clear" style="margin-top: 10px; background: #ef4444; display: none;">Vaciar Asiento</button>
+        </div>
+    </div>
+
+    <script src="supabase-config.js"></script>
+    <script>
+        const BUS_ID = 2;
+        let selectedSeat = null, allPeople = [], selectedPerson = null, occupiedSeats = new Map(), currentRole = 'student';
+
+        window.onload = async () => {
+            renderBus();
+            await loadData();
+            window.db.channel('seats-admin-2').on('postgres_changes', {event:'*', table:'bus_seats', filter: `bus_id=eq.${BUS_ID}`}, () => loadData()).subscribe();
+        };
+
+        function renderBus() {
+            const layout = document.getElementById('bus-layout');
+            layout.innerHTML = "";
+            const bath = document.createElement('div'); bath.className = "bathroom-h"; bath.innerText = "BAÑO"; layout.appendChild(bath);
+            let seatCount = 1;
+            for (let col = 1; col <= 13; col++) {
+                for (let row = 1; row <= 2; row++) createSeat(layout, seatCount++, row, col);
+                const aisle = document.createElement('div'); aisle.className = "aisle-h"; aisle.style.gridColumn = col; layout.appendChild(aisle);
+                for (let row = 4; row <= 5; row++) {
+                    if (col === 1) continue; 
+                    if (seatCount <= 50) createSeat(layout, seatCount++, row, col);
+                }
+            }
+        }
+
+        function createSeat(parent, num, row, col) {
+            const seat = document.createElement('div');
+            seat.className = "seat"; seat.id = `seat-${num}`; seat.innerText = num;
+            seat.style.gridRow = row; seat.style.gridColumn = col;
+            seat.onclick = () => selectSeat(num);
+            parent.appendChild(seat);
+        }
+
+        async function loadData() {
+            const { data: seats } = await window.db.from('bus_seats').select('*').eq('bus_id', BUS_ID);
+            occupiedSeats.clear();
+            document.querySelectorAll('.seat').forEach(s => { s.className = "seat"; s.innerHTML = s.id.split('-')[1]; });
+            seats?.forEach(s => {
+                occupiedSeats.set(s.seat_number, s);
+                const el = document.getElementById(`seat-${s.seat_number}`);
+                if (el) { el.classList.add(`occupied-${s.person_type}`); el.innerHTML = `<small>${s.seat_number}</small><br>👤`; }
+            });
+
+            const { data: students } = await window.db.from('students').select('id, name').eq('bus_id', BUS_ID);
+            const { data: organizers } = await window.db.from('organizers').select('id, name, role');
+            allPeople = [
+                ...(students || []).map(s => ({ ...s, defaultType: 'student', label: 'Estudiante' })),
+                ...(organizers || []).map(o => ({ 
+                    ...o, defaultType: o.role.toLowerCase().includes('maestro') || o.role.toLowerCase().includes('profesor') ? 'teacher' : 'leader',
+                    label: o.role 
+                }))
+            ];
+        }
+
+        function selectSeat(num) {
+            selectedSeat = num;
+            document.querySelectorAll('.seat').forEach(s => s.classList.remove('selected'));
+            document.getElementById(`seat-${num}`).classList.add('selected');
+            const ui = document.getElementById('assignment-ui'); ui.style.display = "block";
+            document.getElementById('selected-seat-title').innerText = `Asiento #${num}`;
+            const occupant = occupiedSeats.get(num);
+            const clearBtn = document.getElementById('btn-clear');
+            const searchSec = document.getElementById('search-section');
+            if (occupant) {
+                document.getElementById('selected-person-info').style.display = "block";
+                document.getElementById('person-name-display').innerText = occupant.occupant_name;
+                setRole(occupant.person_type);
+                clearBtn.style.display = "block"; searchSec.style.display = "none";
+            } else {
+                document.getElementById('selected-person-info').style.display = "none";
+                clearBtn.style.display = "none"; searchSec.style.display = "block";
+            }
+            document.getElementById('person-search').value = ""; document.getElementById('results').innerHTML = "";
+            ui.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function setRole(role) {
+            currentRole = role;
+            document.querySelectorAll('.role-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-role') === role);
+            });
+        }
+
+        function searchPeople() {
+            const query = document.getElementById('person-search').value.toLowerCase();
+            const results = document.getElementById('results'); results.innerHTML = "";
+            if (query.length < 2) return;
+            allPeople.filter(p => p.name.toLowerCase().includes(query)).forEach(p => {
+                const item = document.createElement('div'); item.className = "student-row"; item.style.cursor="pointer";
+                item.innerHTML = `<span>${p.name} <small>(${p.label})</small></span>`;
+                item.onclick = () => {
+                    selectedPerson = p; setRole(p.defaultType);
+                    document.getElementById('selected-person-info').style.display = "block";
+                    document.getElementById('person-name-display').innerText = p.name;
+                    results.innerHTML = "";
+                };
+                results.appendChild(item);
+            });
+        }
+
+        async function saveAssignment() {
+            if (!selectedSeat || (!selectedPerson && !occupiedSeats.get(selectedSeat))) return;
+            const person = selectedPerson || occupiedSeats.get(selectedSeat);
+            const { error } = await window.db.from('bus_seats').upsert({
+                bus_id: BUS_ID, seat_number: selectedSeat, person_id: person.id || person.person_id,
+                person_type: currentRole, occupant_name: person.name || person.occupant_name
+            }, { onConflict: 'bus_id, seat_number' });
+            if (error) alert("Error: " + error.message); else { loadData(); document.getElementById('assignment-ui').style.display = "none"; }
+        }
+
+        async function clearSeat() {
+            if (confirm(`¿Vaciar asiento #${selectedSeat}?`)) {
+                await window.db.from('bus_seats').delete().match({ bus_id: BUS_ID, seat_number: selectedSeat });
+                loadData(); document.getElementById('assignment-ui').style.display = "none";
+            }
+        }
+    </script>
+</body>
+</html>

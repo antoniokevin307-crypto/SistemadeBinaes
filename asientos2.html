@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asientos Bus 2 - RutaBinaes</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        .bus-frame {
+            background: rgba(255, 255, 255, 0.03);
+            border: 3px solid var(--glass-border);
+            border-radius: 40px 120px 60px 40px;
+            padding: 40px 60px 40px 40px;
+            position: relative;
+            overflow-x: auto;
+            margin-bottom: 30px;
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.5);
+        }
+        .bus-grid-horizontal {
+            display: grid;
+            grid-template-rows: repeat(2, 40px) 30px repeat(2, 40px);
+            grid-auto-flow: column; gap: 8px; width: max-content;
+        }
+        .seat {
+            width: 40px; height: 40px;
+            background: var(--glass); border: 1px solid var(--glass-border);
+            border-radius: 8px; display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; color: var(--text-dim); font-weight: 600;
+            cursor: pointer; transition: var(--transition);
+        }
+        .seat:hover { transform: scale(1.1); background: var(--glass-hover); }
+        .seat.occupied-student { background: #3b82f6 !important; color: white; }
+        .seat.occupied-leader { background: var(--secondary) !important; color: white; }
+        .seat.occupied-teacher { background: #f59e0b !important; color: white; }
+        .aisle-h { grid-row: 3; height: 30px; }
+        .bathroom-h {
+            grid-row: 4 / 6; grid-column: 1;
+            background: rgba(244, 63, 94, 0.1); border: 2px dashed #f43f5e;
+            border-radius: 12px; display: flex; align-items: center; justify-content: center;
+            font-size: 0.8rem; font-weight: bold; color: #fda4af; margin-right: 10px;
+        }
+        .legend { display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+        .dot { width: 12px; height: 12px; border-radius: 3px; }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.8);
+            backdrop-filter: blur(5px);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: var(--bg-dark);
+            border: 1px solid var(--glass-border);
+            padding: 30px;
+            border-radius: 20px;
+            max-width: 90%;
+            width: 350px;
+            text-align: center;
+            animation: modalPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes modalPop {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        .close-btn {
+            background: var(--accent);
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <button onclick="location.href='transporte2.html'" style="width: auto; padding: 8px 15px; background: #4b5563;">⬅ Volver</button>
+            <h2 style="margin: 0;">🚌 DISTRIBUCIÓN BUS 2</h2>
+        </header>
+
+        <div class="legend">
+            <div class="legend-item"><div class="dot" style="background: var(--glass); border: 1px solid var(--glass-border);"></div> Disponible</div>
+            <div class="legend-item"><div class="dot" style="background: #3b82f6;"></div> Estudiante</div>
+            <div class="legend-item"><div class="dot" style="background: var(--secondary);"></div> Líder</div>
+            <div class="legend-item"><div class="dot" style="background: #f59e0b;"></div> Maestro</div>
+        </div>
+
+        <div class="card" style="padding: 10px; overflow: hidden;">
+            <div class="bus-frame">
+                <div id="bus-layout" class="bus-grid-horizontal"></div>
+            </div>
+            <p style="text-align: center; color: var(--text-dim); margin-top: -10px;"><small>Toca un asiento para ver detalles</small></p>
+        </div>
+    </div>
+
+    <!-- Modal para Info de Asiento -->
+    <div id="seatModal" class="modal" onclick="closeModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3 style="color: var(--text-main); margin-top: 0;">Detalle del Asiento</h3>
+            <div id="modal-body">
+                <p id="seat-number-display" style="font-size: 1.5rem; font-weight: bold; margin: 10px 0;"></p>
+                <div id="occupant-info" style="display: none;">
+                    <p style="color: var(--text-dim); margin-bottom: 5px;">OCUPADO POR:</p>
+                    <p id="occupant-name" style="font-size: 1.2rem; font-weight: 600;"></p>
+                    <p id="occupant-type" style="display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; margin-top: 5px;"></p>
+                </div>
+                <div id="empty-info" style="display: none;">
+                    <p style="color: var(--text-dim);">Este asiento está disponible.</p>
+                </div>
+            </div>
+            <button class="close-btn" onclick="closeModal()">Cerrar</button>
+        </div>
+    </div>
+
+    <script src="supabase-config.js"></script>
+    <script>
+        const BUS_ID = 2;
+        let occupiedSeats = new Map();
+
+        window.onload = async () => {
+            renderBus();
+            await loadData();
+            window.db.channel('seats-user-2').on('postgres_changes', {event:'*', table:'bus_seats', filter: `bus_id=eq.${BUS_ID}`}, () => loadData()).subscribe();
+        };
+
+        function renderBus() {
+            const layout = document.getElementById('bus-layout');
+            layout.innerHTML = "";
+            const bath = document.createElement('div'); bath.className = "bathroom-h"; bath.innerText = "BAÑO"; layout.appendChild(bath);
+            let seatCount = 1;
+            for (let col = 1; col <= 13; col++) {
+                for (let row = 1; row <= 2; row++) createSeat(layout, seatCount++, row, col);
+                const aisle = document.createElement('div'); aisle.className = "aisle-h"; aisle.style.gridColumn = col; layout.appendChild(aisle);
+                for (let row = 4; row <= 5; row++) {
+                    if (col === 1) continue; 
+                    if (seatCount <= 50) createSeat(layout, seatCount++, row, col);
+                }
+            }
+        }
+
+        function createSeat(parent, num, row, col) {
+            const seat = document.createElement('div'); seat.className = "seat"; seat.id = `seat-${num}`; seat.innerText = num;
+            seat.style.gridRow = row; seat.style.gridColumn = col;
+            seat.onclick = () => showSeatInfo(num);
+            parent.appendChild(seat);
+        }
+
+        async function loadData() {
+            const { data: seats } = await window.db.from('bus_seats').select('*').eq('bus_id', BUS_ID);
+            occupiedSeats.clear();
+            document.querySelectorAll('.seat').forEach(s => { s.className = "seat"; s.innerHTML = s.id.split('-')[1]; s.title = "Vacío"; });
+            seats?.forEach(s => {
+                occupiedSeats.set(s.seat_number, s);
+                const el = document.getElementById(`seat-${s.seat_number}`);
+                if (el) { 
+                    el.classList.add(`occupied-${s.person_type}`); 
+                    el.title = s.occupant_name; 
+                    el.innerHTML = `<small>${s.seat_number}</small><br>👤`; 
+                }
+            });
+        }
+
+        function showSeatInfo(num) {
+            const modal = document.getElementById('seatModal');
+            const seatNumDisp = document.getElementById('seat-number-display');
+            const occInfo = document.getElementById('occupant-info');
+            const emptyInfo = document.getElementById('empty-info');
+            const occName = document.getElementById('occupant-name');
+            const occType = document.getElementById('occupant-type');
+
+            seatNumDisp.innerText = `Asiento #${num}`;
+            const occupant = occupiedSeats.get(num);
+
+            if (occupant) {
+                occName.innerText = occupant.occupant_name;
+                occType.innerText = occupant.person_type.toUpperCase();
+                occType.style.background = occupant.person_type === 'student' ? '#3b82f6' : (occupant.person_type === 'teacher' ? '#f59e0b' : '#ec4899');
+                occInfo.style.display = 'block';
+                emptyInfo.style.display = 'none';
+            } else {
+                occInfo.style.display = 'none';
+                emptyInfo.style.display = 'block';
+            }
+
+            modal.style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('seatModal').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
